@@ -20,3 +20,11 @@ def startup_event():
     _ = get_model()
 
 app.include_router(router, prefix="")  # raíz
+if __name__ == "__main__":
+    import uvicorn, os
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "8080")),
+        reload=False,
+)
