@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     # App
     APP_VERSION: str = os.getenv("APP_VERSION", "1.0.0")
 
+    # JWT configuración
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "tu_clave_secreta_aqui")  # Define una clave secreta para JWT
+    JWT_ALGORITHM: str = "HS256"  # El algoritmo de encriptación del token JWT
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30  # Tiempo de expiración del token en minutos
+
     class Config:
         env_file = ".env"  # opcional, si quieres cargar .env automáticamente
 
