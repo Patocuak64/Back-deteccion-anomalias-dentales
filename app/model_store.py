@@ -1,4 +1,76 @@
-import os, requests
+# app/model_store.py
+# ───────────────────────────────────────────────────────────────────
+# Parche robusto para PyTorch 2.6+: allow-list + parche de torch.load
+# Debe ejecutarse ANTES de importar Ultralytics/YOLO.
+# ───────────────────────────────────────────────────────────────────
+import os
+os.environ.setdefault("TORCH_LOAD_WEIGHTS_ONLY", "1")  # mantener modo seguro
+
+# 1) Registrar clases seguras y 2) monkey-patch de torch.load con safe_globals
+def _apply_torch_patches():
+    try:
+        import torch
+        from torch.serialization import add_safe_globals, safe_globals
+
+        # Tipos estándar útiles
+        from torch.nn.modules.container import Sequential, ModuleList, ModuleDict
+        from collections import OrderedDict
+
+        allow = [Sequential, ModuleList, ModuleDict, OrderedDict]
+
+        # ===== Clases de Ultralytics que aparecen en los .pt =====
+        try:
+            # Modelo principal
+            from ultralytics.nn.tasks import DetectionModel
+            allow.append(DetectionModel)
+        except Exception:
+            pass
+
+        # Módulos frecuentes de la familia YOLO (conv, blocks, head)
+        try:
+            from ultralytics.nn.modules.conv import Conv, DWConv, Focus, GhostConv, RepConv
+            allow += [Conv, DWConv, Focus, GhostConv, RepConv]
+        except Exception:
+            pass
+
+        try:
+            from ultralytics.nn.modules.block import (
+                C2f, Bottleneck, BottleneckCSP, SPPF, SPP, C3
+            )
+            allow += [C2f, Bottleneck, BottleneckCSP, SPPF, SPP, C3]
+        except Exception:
+            pass
+
+        try:
+            from ultralytics.nn.modules.head import Detect, Pose, Classify
+            allow += [Detect, Pose, Classify]
+        except Exception:
+            pass
+        # =========================================================
+
+        # 1) Intentar registrar allow-list global
+        try:
+            add_safe_globals(allow)
+        except Exception as e:
+            print(f"[torch-allowlist] aviso: add_safe_globals parcial: {e}")
+
+        # 2) Parchear torch.load para que SIEMPRE cargue con safe_globals(allow)
+        _orig_torch_load = torch.load
+
+        def _patched_torch_load(*args, **kwargs):
+            with safe_globals(allow):
+                return _orig_torch_load(*args, **kwargs)
+
+        torch.load = _patched_torch_load
+        print("[torch-allowlist] parche activo (safe_globals + torch.load)")
+    except Exception as e:
+        print(f"[torch-allowlist] no se pudo aplicar completamente: {e}")
+
+# Ejecutar parches ANTES de importar YOLO/Ultralytics
+_apply_torch_patches()
+# ───────────────────────────────────────────────────────────────────
+
+import requests
 from ultralytics import YOLO
 from .settings import settings
 
@@ -6,6 +78,7 @@ _model = None
 _model_path = None
 
 def _download_model_if_needed():
+    """Descarga el .pt si MODEL_URL está definido; si no, usa MODEL_LOCAL_PATH."""
     global _model_path
     if settings.MODEL_URL:
         dest = settings.MODEL_LOCAL_PATH
@@ -16,12 +89,12 @@ def _download_model_if_needed():
                 f.write(r.content)
         _model_path = dest
     else:
-        # Si prefieres montar el modelo por volumen o imagen
         _model_path = settings.MODEL_LOCAL_PATH
         if not os.path.exists(_model_path):
             raise FileNotFoundError(f"Modelo no encontrado en {_model_path}")
 
 def get_model() -> YOLO:
+    """Singleton del modelo YOLO (la carga ya queda protegida por el parche)."""
     global _model
     if _model is None:
         _download_model_if_needed()
