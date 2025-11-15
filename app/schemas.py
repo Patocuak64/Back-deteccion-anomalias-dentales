@@ -1,3 +1,5 @@
+# app/schemas.py
+
 from pydantic import BaseModel, HttpUrl
 from typing import List, Dict, Optional
 
@@ -6,12 +8,15 @@ class Detection(BaseModel):
     class_name: str
     confidence: float
     bbox: List[int]
+    fdi: Optional[int] = None  # ⭐ NUEVO
+    tooth_fdi: Optional[int] = None  # ⭐ NUEVO (alias)
 
 class AnalyzeResponse(BaseModel):
     summary: Dict
     detections: List[Detection]
     stats: Dict
     report_text: str
+    teeth_fdi: Optional[Dict[str, List[int]]] = None  # ⭐ NUEVO
     image_base64: Optional[str] = None
     saved_url: Optional[HttpUrl] = None
 

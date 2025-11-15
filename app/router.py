@@ -266,3 +266,91 @@ def delete_analysis(
     db.delete(r)
     db.commit()
     return {"deleted": analysis_id}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐ NUEVO ENDPOINT: Información sobre dientes FDI
+# ═══════════════════════════════════════════════════════════════════════════
+@router.get("/fdi-info/{fdi_number}", tags=["info"])
+def get_fdi_info(fdi_number: int):
+    """
+    Obtiene información detallada sobre un número FDI específico.
+    
+    Args:
+        fdi_number: Número FDI del diente (11-48)
+    
+    Returns:
+        Información del diente (cuadrante, posición, nombre)
+    """
+    if fdi_number < 11 or fdi_number > 48 or fdi_number % 10 == 0 or fdi_number % 10 > 8:
+        raise HTTPException(400, "Número FDI inválido. Debe ser 11-18, 21-28, 31-38 o 41-48")
+    
+    quadrant = fdi_number // 10
+    position = fdi_number % 10
+    
+    quadrant_names = {
+        1: "Superior Derecho",
+        2: "Superior Izquierdo",
+        3: "Inferior Izquierdo",
+        4: "Inferior Derecho"
+    }
+    
+    tooth_names = {
+        1: "Incisivo Central",
+        2: "Incisivo Lateral",
+        3: "Canino",
+        4: "Primer Premolar",
+        5: "Segundo Premolar",
+        6: "Primer Molar",
+        7: "Segundo Molar",
+        8: "Tercer Molar (Muela del Juicio)"
+    }
+    
+    tooth_type = "Permanente"
+    if quadrant in [5, 6, 7, 8]:
+        tooth_type = "Temporal (Deciduo)"
+    
+    return {
+        "fdi": fdi_number,
+        "quadrant": quadrant,
+        "quadrant_name": quadrant_names.get(quadrant, "Desconocido"),
+        "position": position,
+        "tooth_name": tooth_names.get(position, "Desconocido"),
+        "tooth_type": tooth_type,
+        "full_name": f"{tooth_names.get(position, 'Desconocido')} {quadrant_names.get(quadrant, 'Desconocido')}",
+        "description": f"Diente {fdi_number} - {tooth_names.get(position)} del cuadrante {quadrant_names.get(quadrant)}"
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ⭐ NUEVO ENDPOINT: Mapa completo de dientes FDI
+# ═══════════════════════════════════════════════════════════════════════════
+@router.get("/fdi-map", tags=["info"])
+def get_fdi_map():
+    """
+    Retorna el mapa completo de la numeración FDI.
+    """
+    quadrants = {
+        1: {"name": "Superior Derecho", "teeth": list(range(11, 19))},
+        2: {"name": "Superior Izquierdo", "teeth": list(range(21, 29))},
+        3: {"name": "Inferior Izquierdo", "teeth": list(range(31, 39))},
+        4: {"name": "Inferior Derecho", "teeth": list(range(41, 49))},
+    }
+    
+    tooth_names = {
+        1: "Incisivo Central",
+        2: "Incisivo Lateral",
+        3: "Canino",
+        4: "Primer Premolar",
+        5: "Segundo Premolar",
+        6: "Primer Molar",
+        7: "Segundo Molar",
+        8: "Tercer Molar"
+    }
+    
+    return {
+        "quadrants": quadrants,
+        "tooth_positions": tooth_names,
+        "total_permanent_teeth": 32,
+        "description": "Sistema FDI de numeración dental internacional"
+    }
