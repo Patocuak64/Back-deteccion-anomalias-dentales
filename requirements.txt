@@ -1,20 +1,23 @@
+# ═══════════════════════════════════════════════════════════════════
+# BACKEND DENTAL - REQUIREMENTS.TXT
+# Despliegue en Render (Python 3.12)
+# ═══════════════════════════════════════════════════════════════════
+
 # ===== Python y servidor =====
 fastapi==0.115.2
 uvicorn[standard]==0.30.6
 python-multipart==0.0.9
 
-# ===== PyTorch compatible con YOLO en Render =====
-torch==2.1.2
-torchvision==0.16.2
-torchaudio==2.1.2
-
-# ===== IA YOLO =====
+# ===== IA YOLO / visión =====
+# Nota: NO fijamos versión de torch/torchvision aquí.
+# Ultralytics instalará las versiones compatibles con la versión
+# de Python y de sistema que tenga Render.
 ultralytics==8.0.196
 opencv-python-headless==4.8.1.78
 pillow==10.4.0
 numpy==1.26.4
 
-# ===== Seguridad =====
+# ===== Seguridad / autenticación =====
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 bcrypt==3.2.2
@@ -22,7 +25,7 @@ bcrypt==3.2.2
 # ===== Base de datos =====
 sqlalchemy==2.0.23
 
-# ===== Config =====
+# ===== Configuración y entorno =====
 pydantic==2.9.2
 pydantic-settings==2.6.1
 python-dotenv==1.0.0
@@ -32,4 +35,3 @@ email-validator==2.1.0
 
 # ===== Utilidades =====
 requests==2.32.3
-
