@@ -210,7 +210,7 @@ def list_analyses(
             except Exception:
                 teeth_map = {}
 
-        # ⬇️ Ajuste de hora a Perú
+        #  Ajuste de hora a Perú
         if r.created_at:
             created = r.created_at
             # Si no tiene tzinfo, asumimos que está en UTC
@@ -225,7 +225,7 @@ def list_analyses(
 
         result.append(
             {
-                # 👇 este "id" ya es el índice por usuario (1,2,3…)
+                
                 "id": r.per_user_index or r.id,
                 "analysis_id": r.id,
                 "per_user_index": r.per_user_index,
@@ -269,7 +269,7 @@ def delete_analysis(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# ⭐ NUEVO ENDPOINT: Información sobre dientes FDI
+#  Información sobre dientes FDI
 # ═══════════════════════════════════════════════════════════════════════════
 @router.get("/fdi-info/{fdi_number}", tags=["info"])
 def get_fdi_info(fdi_number: int):
@@ -323,7 +323,7 @@ def get_fdi_info(fdi_number: int):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# ⭐ NUEVO ENDPOINT: Mapa completo de dientes FDI
+#  Mapa completo de dientes FDI
 # ═══════════════════════════════════════════════════════════════════════════
 @router.get("/fdi-map", tags=["info"])
 def get_fdi_map():
@@ -353,4 +353,219 @@ def get_fdi_map():
         "tooth_positions": tooth_names,
         "total_permanent_teeth": 32,
         "description": "Sistema FDI de numeración dental internacional"
+    }
+
+# ═══════════════════════════════════════════════════════════════════════════
+# GESTIÓN Y COMPARACIÓN DE MODELOS (agregar al final del archivo)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/models/available", tags=["models"])
+def list_available_models():
+    """
+    Retorna lista de modelos disponibles con métricas completas
+    """
+    models_data = [
+        {
+            "id": "best",
+            "name": "best.pt",
+            "architecture": "YOLOv8n/s",
+            "version": "v8",
+            "epochs": 100,
+            "status": "production",  # production, experimental, incomplete
+            "is_active": True,
+            "metrics": {
+                "map50": 0.790,
+                "map50_95": 0.520,
+                "precision": 0.790,
+                "recall": 0.750
+            },
+            "per_class_metrics": {
+                "Caries": {"precision": 0.82, "recall": 0.78, "map50": 0.80},
+                "Diente_Retenido": {"precision": 0.75, "recall": 0.85, "map50": 0.82},
+                "Perdida_Osea": {"precision": 0.80, "recall": 0.62, "map50": 0.75}
+            },
+            "training_info": {
+                "duration_hours": 2.5,
+                "train_images": 19308,
+                "val_images": 2725,
+                "date": "2025-10"
+            },
+            "description": "Modelo principal en producción. Mejor equilibrio entre precisión y velocidad."
+        },
+        {
+            "id": "yolov11m",
+            "name": "yolov11m_best.pt",
+            "architecture": "YOLOv11m",
+            "version": "v11",
+            "epochs": 40,
+            "status": "experimental",
+            "is_active": False,
+            "metrics": {
+                "map50": 0.581,
+                "map50_95": 0.365,
+                "precision": 0.554,
+                "recall": 0.590
+            },
+            "per_class_metrics": {
+                "Caries": {"precision": 0.596, "recall": 0.550, "map50": 0.562},
+                "Diente_Retenido": {"precision": 0.530, "recall": 0.947, "map50": 0.824},
+                "Perdida_Osea": {"precision": 0.534, "recall": 0.273, "map50": 0.356}
+            },
+            "training_info": {
+                "duration_hours": 2.62,
+                "train_images": 19308,
+                "val_images": 2725,
+                "early_stopping": 28,
+                "date": "2025-11"
+            },
+            "description": "Versión 11 Medium. Early stopping en epoch 28. Excelente recall en dientes retenidos."
+        },
+        {
+            "id": "yolov11l",
+            "name": "yolov11l_best.pt",
+            "architecture": "YOLOv11l",
+            "version": "v11",
+            "epochs": 40,
+            "status": "experimental",
+            "is_active": False,
+            "metrics": {
+                "map50": 0.575,
+                "map50_95": 0.367,
+                "precision": 0.543,
+                "recall": 0.590
+            },
+            "per_class_metrics": {
+                "Caries": {"precision": 0.624, "recall": 0.539, "map50": 0.568},
+                "Diente_Retenido": {"precision": 0.548, "recall": 0.944, "map50": 0.818},
+                "Perdida_Osea": {"precision": 0.458, "recall": 0.287, "map50": 0.338}
+            },
+            "training_info": {
+                "duration_hours": 5.68,
+                "train_images": 19308,
+                "val_images": 2725,
+                "date": "2025-11"
+            },
+            "description": "Modelo Large v11. Mejor precisión en caries pero entrenamiento más lento."
+        },
+        {
+            "id": "yolov10m",
+            "name": "yolov10m_best.pt",
+            "architecture": "YOLOv10m",
+            "version": "v10",
+            "epochs": 40,
+            "status": "experimental",
+            "is_active": False,
+            "metrics": {
+                "map50": 0.513,
+                "map50_95": 0.315,
+                "precision": 0.445,
+                "recall": 0.547
+            },
+            "per_class_metrics": {
+                "Caries": {"precision": 0.561, "recall": 0.450, "map50": 0.475},
+                "Diente_Retenido": {"precision": 0.456, "recall": 0.940, "map50": 0.795},
+                "Perdida_Osea": {"precision": 0.319, "recall": 0.243, "map50": 0.269}
+            },
+            "training_info": {
+                "duration_hours": 2.37,
+                "train_images": 19308,
+                "val_images": 2725,
+                "date": "2025-11"
+            },
+            "description": "Modelo v10 Medium. Menor rendimiento general pero rápido."
+        },
+        {
+            "id": "yolov8x",
+            "name": "yolov8x_best.pt",
+            "architecture": "YOLOv8x",
+            "version": "v8",
+            "epochs": 28,
+            "status": "incomplete",
+            "is_active": False,
+            "metrics": {
+                "map50": 0.562,
+                "map50_95": 0.345,
+                "precision": 0.537,
+                "recall": 0.567
+            },
+            "per_class_metrics": {
+                "Caries": {"precision": 0.58, "recall": 0.52, "map50": 0.55},
+                "Diente_Retenido": {"precision": 0.52, "recall": 0.89, "map50": 0.78},
+                "Perdida_Osea": {"precision": 0.51, "recall": 0.29, "map50": 0.36}
+            },
+            "training_info": {
+                "duration_hours": 3.0,
+                "train_images": 19308,
+                "val_images": 2725,
+                "interrupted": True,
+                "target_epochs": 50,
+                "date": "2025-11"
+            },
+            "description": " Entrenamiento interrumpido en epoch 28/50. No usar en producción."
+        }
+    ]
+    
+    return {
+        "models": models_data,
+        "total": len(models_data),
+        "active_model": next((m["id"] for m in models_data if m["is_active"]), "best")
+    }
+
+
+@router.get("/models/comparison", tags=["models"])
+def get_models_comparison():
+    """
+    Retorna tabla comparativa de modelos
+    """
+    models = list_available_models()["models"]
+    
+    comparison = {
+        "headers": ["Modelo", "Arquitectura", "mAP50", "mAP50-95", "Precision", "Recall", "Tiempo (h)", "Estado"],
+        "rows": []
+    }
+    
+    for model in models:
+        row = {
+            "id": model["id"],
+            "name": model["name"],
+            "architecture": model["architecture"],
+            "map50": model["metrics"]["map50"],
+            "map50_95": model["metrics"]["map50_95"],
+            "precision": model["metrics"]["precision"],
+            "recall": model["metrics"]["recall"],
+            "duration": model["training_info"]["duration_hours"],
+            "status": model["status"],
+            "is_active": model["is_active"]
+        }
+        comparison["rows"].append(row)
+    
+    # Ordenar por mAP50 descendente
+    comparison["rows"].sort(key=lambda x: x["map50"], reverse=True)
+    
+    return comparison
+
+
+@router.post("/models/set-active/{model_id}", tags=["models"])
+def set_active_model(model_id: str, user: models.User = Depends(get_current_user)):
+    """
+    Cambia el modelo activo (requiere autenticación)
+    """
+    from fastapi import HTTPException
+    
+    valid_models = ["best", "yolov11m", "yolov11l", "yolov10m", "yolov8x"]
+    
+    if model_id not in valid_models:
+        raise HTTPException(status_code=400, detail=f"Modelo inválido. Opciones: {valid_models}")
+    
+    if model_id == "yolov8x":
+        raise HTTPException(
+            status_code=400, 
+            detail="Este modelo tiene entrenamiento incompleto y no puede usarse en producción"
+        )
+    
+    return {
+        "success": True,
+        "message": f"Modelo {model_id} establecido como activo",
+        "model_id": model_id,
+        "note": " Implementación simplificada. En producción debes recargar el modelo en inference.py"
     }

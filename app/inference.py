@@ -27,7 +27,7 @@ def _font_pair():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# ⭐ NUEVA FUNCIÓN: CALCULAR NÚMERO FDI
+#  CALCULAR NÚMERO FDI
 # ═══════════════════════════════════════════════════════════════════════════
 def calculate_fdi(x_center_norm: float, y_center_norm: float) -> int:
     """
@@ -77,7 +77,7 @@ def calculate_fdi(x_center_norm: float, y_center_norm: float) -> int:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# ⭐ FUNCIÓN PRINCIPAL MODIFICADA: run_inference
+# FUNCIÓN PRINCIPAL MODIFICADA: run_inference
 # ═══════════════════════════════════════════════════════════════════════════
 def run_inference(image: Image.Image, confidence: float) -> Tuple[Image.Image, Dict[str, Any]]:
     model = get_model()
@@ -89,14 +89,14 @@ def run_inference(image: Image.Image, confidence: float) -> Tuple[Image.Image, D
     draw = ImageDraw.Draw(img_draw)
     font, font_small = _font_pair()
 
-    # ⭐ NUEVO: obtener dimensiones de imagen para normalizar
+    # obtener dimensiones de imagen para normalizar
     img_width, img_height = image.size
 
     class_counts = {0: 0, 1: 0, 2: 0}
     class_conf = {0: [], 1: [], 2: []}
     detections: List[Dict[str, Any]] = []
     
-    # ⭐ NUEVO: mapa de dientes FDI por clase
+    #  mapa de dientes FDI por clase
     teeth_fdi_map = {
         "Caries": [],
         "Diente_Retenido": [],
@@ -117,13 +117,13 @@ def run_inference(image: Image.Image, confidence: float) -> Tuple[Image.Image, D
         conf = float(box.conf[0].cpu().numpy())
         cid = int(box.cls[0].cpu().numpy())
 
-        # ⭐ NUEVO: calcular centro del bbox y normalizar
+        # calcular centro del bbox y normalizar
         x_center = (x1 + x2) / 2
         y_center = (y1 + y2) / 2
         x_center_norm = x_center / img_width
         y_center_norm = y_center / img_height
         
-        # ⭐ NUEVO: calcular número FDI
+        # calcular número FDI
         fdi_number = calculate_fdi(x_center_norm, y_center_norm)
 
         class_counts[cid] += 1
@@ -131,14 +131,14 @@ def run_inference(image: Image.Image, confidence: float) -> Tuple[Image.Image, D
         cname = CLASS_NAMES.get(cid, f"cls_{cid}")
         color = CLASS_COLORS.get(cid, (255, 255, 0))
 
-        # ⭐ MODIFICADO: incluir FDI en el label
+        #  incluir FDI en el label
         draw.rectangle([(x1, y1), (x2, y2)], outline=color, width=3)
         label = f"{cname} [{fdi_number}]: {conf:.1%}"
         bbox_text = draw.textbbox((x1, y1 - 25), label, font=font_small)
         draw.rectangle(bbox_text, fill=color)
         draw.text((x1, y1 - 25), label, fill="white", font=font_small)
 
-        # ⭐ MODIFICADO: agregar FDI a detections
+        # agregar FDI a detections
         detections.append(
             {
                 "class_id": cid,
@@ -150,7 +150,7 @@ def run_inference(image: Image.Image, confidence: float) -> Tuple[Image.Image, D
             }
         )
         
-        # ⭐ NUEVO: agregar a mapa de dientes
+        # agregar a mapa de dientes
         if fdi_number not in teeth_fdi_map[cname]:
             teeth_fdi_map[cname].append(fdi_number)
 
@@ -169,7 +169,7 @@ def run_inference(image: Image.Image, confidence: float) -> Tuple[Image.Image, D
                 "conf_max": float(np.max(arr)),
             }
 
-    # ⭐ MODIFICADO: reporte mejorado con FDI
+    # reporte mejorado con FDI
     report_lines = ["ANÁLISIS DE RADIOGRAFÍA DENTAL", "=" * 50, ""]
     total = sum(class_counts.values())
     report_lines.append(f"Total de detecciones: {total}\n")

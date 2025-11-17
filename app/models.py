@@ -45,12 +45,8 @@ class Analysis(Base):
     # JSON con el payload completo del análisis
     results_json = Column(Text, nullable=True)
 
-    # JSON con dientes por patología usando sistema FDI, por ejemplo:
-    # {
-    #   "Caries": [16, 26],
-    #   "Diente_Retenido": [38],
-    #   "Perdida_Osea": []
-    # }
+    # JSON con dientes por patología usando sistema FDI
+
     teeth_fdi_json = Column(Text, nullable=True)
 
     report_text = Column(Text, nullable=True)
