@@ -1,37 +1,50 @@
 # app/model_store.py
-# ───────────────────────────────────────────────────────────────────
-# Parche robusto para PyTorch 2.6+: allow-list + parche de torch.load
-# Debe ejecutarse ANTES de importar Ultralytics/YOLO.
-# ───────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------
+# Parche para PyTorch 2.6+ en Render
+# Se aplica ANTES de importar Ultralytics/YOLO
+# ---------------------------------------------------------
 import os
-os.environ.setdefault("TORCH_LOAD_WEIGHTS_ONLY", "1")  # mantener modo seguro
-
 
 def _apply_torch_patches():
-    """Configura allow-list de clases seguras y envuelve torch.load con safe_globals."""
+    """
+    Parche para cargar modelos YOLO en PyTorch 2.6+.
+    - Amplía la lista de clases permitidas.
+    - Fuerza torch.load(weights_only=False) para compatibilidad.
+    """
     try:
         import torch
-        from torch.serialization import add_safe_globals, safe_globals
-
-        # Contenedores estándar
-        from torch.nn.modules.container import Sequential, ModuleList, ModuleDict
+        from torch.serialization import add_safe_globals
         from collections import OrderedDict
 
-        # --- NUEVO: capas base de PyTorch que aparecen en el checkpoint ---
-        from torch.nn.modules.conv import Conv2d
-        from torch.nn.modules.batchnorm import BatchNorm2d
-        # -------------------------------------------------------------------
+        # Contenedores básicos
+        try:
+            from torch.nn import Sequential, ModuleList, ModuleDict
+            base_allow = [Sequential, ModuleList, ModuleDict, OrderedDict]
+        except Exception:
+            base_allow = [OrderedDict]
 
-        allow = [
-            Sequential,
-            ModuleList,
-            ModuleDict,
-            OrderedDict,
-            Conv2d,         # añadida
-            BatchNorm2d,    # añadida
-        ]
+        allow = list(base_allow)
 
-        # ===== Clases de Ultralytics que aparecen en los .pt =====
+        # ---- Clases estándar de PyTorch usadas en YOLO ----
+        try:
+            from torch.nn.modules.activation import SiLU
+            allow.append(SiLU)
+        except Exception:
+            pass
+
+        try:
+            from torch.nn.modules.batchnorm import BatchNorm2d
+            allow.append(BatchNorm2d)
+        except Exception:
+            pass
+
+        try:
+            from torch.nn.modules.conv import Conv2d
+            allow.append(Conv2d)
+        except Exception:
+            pass
+
+        # ---- Clases típicas de Ultralytics/YOLO ----
         try:
             from ultralytics.nn.tasks import DetectionModel
             allow.append(DetectionModel)
@@ -39,51 +52,52 @@ def _apply_torch_patches():
             pass
 
         try:
-            from ultralytics.nn.modules.conv import Conv, DWConv, Focus, GhostConv, RepConv
-            allow += [Conv, DWConv, Focus, GhostConv, RepConv]
+            from ultralytics.nn.modules.conv import Conv, DWConv, RepConv
+            allow += [Conv, DWConv, RepConv]
         except Exception:
             pass
 
         try:
-            from ultralytics.nn.modules.block import (
-                C2f, Bottleneck, BottleneckCSP, SPPF, SPP, C3
-            )
-            allow += [C2f, Bottleneck, BottleneckCSP, SPPF, SPP, C3]
+            from ultralytics.nn.modules.block import C2f, SPPF
+            allow += [C2f, SPPF]
         except Exception:
             pass
 
         try:
-            from ultralytics.nn.modules.head import Detect, Pose, Classify
-            allow += [Detect, Pose, Classify]
+            from ultralytics.nn.modules.head import Detect
+            allow.append(Detect)
         except Exception:
             pass
-        # =========================================================
 
-        # Registrar allow-list global
+        # Registrar clases en safe_globals (por si se usa el modo seguro)
         try:
             add_safe_globals(allow)
         except Exception as e:
-            print(f"[torch-allowlist] aviso: add_safe_globals parcial: {e}")
+            print(f"[torch-allowlist] Advertencia al registrar safe_globals: {e}")
 
-        # Guardar referencia original y envolver torch.load
-        _orig_torch_load = torch.load
+        #  CRÍTICO: forzar weights_only=False en torch.load
+        _orig_load = torch.load
 
-        def _patched_torch_load(*args, **kwargs):
-            # Dejamos que PyTorch decida weights_only,
-            # pero siempre con nuestras clases en safe_globals.
-            with safe_globals(allow):
-                return _orig_torch_load(*args, **kwargs)
+        def _patched_load(*args, **kwargs):
+            # Si el usuario no pasa weights_only, lo forzamos a False
+            kwargs.setdefault("weights_only", False)
+            return _orig_load(*args, **kwargs)
 
-        torch.load = _patched_torch_load
-        print("[torch-allowlist] parche activo (safe_globals + torch.load)")
+        torch.load = _patched_load
+
+        print("[torch-allowlist] Parche activo: torch.load con weights_only=False")
+
     except Exception as e:
-        print(f"[torch-allowlist] no se pudo aplicar completamente: {e}")
+        print(f"[torch-allowlist] ERROR al aplicar parche: {e}")
+        # En producción es mejor fallar aquí que arrancar sin poder cargar el modelo
+        raise
 
-
-# Ejecutar parches ANTES de importar YOLO/Ultralytics
+# Ejecutar el parche ANTES de importar YOLO
 _apply_torch_patches()
-# ───────────────────────────────────────────────────────────────────
 
+# ---------------------------------------------------------
+# Resto del código original
+# ---------------------------------------------------------
 import requests
 from ultralytics import YOLO
 from .settings import settings
@@ -91,32 +105,33 @@ from .settings import settings
 _model = None
 _model_path = None
 
-
 def _download_model_if_needed():
-    """Descarga el .pt si MODEL_URL está definido; si no, usa MODEL_LOCAL_PATH."""
+    """Descarga el .pt si MODEL_URL está definido, caso contrario usa almacenamiento local."""
     global _model_path
     if settings.MODEL_URL:
         dest = settings.MODEL_LOCAL_PATH
         if not os.path.exists(dest):
+            print(f"[model_store] Descargando modelo desde {settings.MODEL_URL}...")
             r = requests.get(str(settings.MODEL_URL), timeout=60)
             r.raise_for_status()
             with open(dest, "wb") as f:
                 f.write(r.content)
+            print(f"[model_store] Modelo descargado en {dest}")
         _model_path = dest
     else:
         _model_path = settings.MODEL_LOCAL_PATH
         if not os.path.exists(_model_path):
             raise FileNotFoundError(f"Modelo no encontrado en {_model_path}")
 
-
 def get_model() -> YOLO:
-    """Singleton del modelo YOLO (la carga ya queda protegida por el parche)."""
+    """Devuelve instancia singleton del modelo YOLO."""
     global _model
     if _model is None:
         _download_model_if_needed()
+        print(f"[model_store] Cargando modelo desde: {_model_path}")
         _model = YOLO(_model_path)
+        print("[model_store] Modelo cargado exitosamente")
     return _model
-
 
 def get_model_path() -> str:
     return _model_path or settings.MODEL_LOCAL_PATH
