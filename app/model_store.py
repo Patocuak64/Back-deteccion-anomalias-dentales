@@ -1,23 +1,35 @@
 # app/model_store.py
 # ───────────────────────────────────────────────────────────────────
-# Parche para PyTorch 2.6+ (weights_only) + carga segura de YOLO
+# Parche robusto para PyTorch 2.6+: allow-list + parche de torch.load
+# Debe ejecutarse ANTES de importar Ultralytics/YOLO.
 # ───────────────────────────────────────────────────────────────────
 import os
 os.environ.setdefault("TORCH_LOAD_WEIGHTS_ONLY", "1")  # mantener modo seguro
 
+
 def _apply_torch_patches():
-    """Configura torch.load para funcionar con los .pt de YOLO en modo seguro."""
+    """Configura allow-list de clases seguras y envuelve torch.load con safe_globals."""
     try:
         import torch
         from torch.serialization import add_safe_globals, safe_globals
 
         # Contenedores estándar
         from torch.nn.modules.container import Sequential, ModuleList, ModuleDict
-        from torch.nn.modules.conv import Conv2d  # Conv2d base de PyTorch
         from collections import OrderedDict
 
-        # Allow-list inicial
-        allow = [Sequential, ModuleList, ModuleDict, OrderedDict, Conv2d]
+        # --- NUEVO: capas base de PyTorch que aparecen en el checkpoint ---
+        from torch.nn.modules.conv import Conv2d
+        from torch.nn.modules.batchnorm import BatchNorm2d
+        # -------------------------------------------------------------------
+
+        allow = [
+            Sequential,
+            ModuleList,
+            ModuleDict,
+            OrderedDict,
+            Conv2d,         # añadida
+            BatchNorm2d,    # añadida
+        ]
 
         # ===== Clases de Ultralytics que aparecen en los .pt =====
         try:
@@ -53,11 +65,12 @@ def _apply_torch_patches():
         except Exception as e:
             print(f"[torch-allowlist] aviso: add_safe_globals parcial: {e}")
 
-        # Guardar referencia al torch.load original
+        # Guardar referencia original y envolver torch.load
         _orig_torch_load = torch.load
 
         def _patched_torch_load(*args, **kwargs):
-            # Usar siempre safe_globals con la allow-list
+            # Dejamos que PyTorch decida weights_only,
+            # pero siempre con nuestras clases en safe_globals.
             with safe_globals(allow):
                 return _orig_torch_load(*args, **kwargs)
 
@@ -65,6 +78,7 @@ def _apply_torch_patches():
         print("[torch-allowlist] parche activo (safe_globals + torch.load)")
     except Exception as e:
         print(f"[torch-allowlist] no se pudo aplicar completamente: {e}")
+
 
 # Ejecutar parches ANTES de importar YOLO/Ultralytics
 _apply_torch_patches()
