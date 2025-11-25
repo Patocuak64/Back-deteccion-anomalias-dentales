@@ -124,7 +124,7 @@ def validate_email(email: str) -> Tuple[bool, str]:
     if len(email) > 320:  # Estándar RFC 5321
         return False, "El correo es demasiado largo"
     
-    # ✅ Correo válido
+    #  Correo válido
     return True, None
 
 
