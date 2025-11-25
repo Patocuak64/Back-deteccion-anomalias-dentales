@@ -65,12 +65,20 @@ def get_password_hash(p: str) -> str:
 
 
 def verify_password(p: str, h: str) -> bool:
-    """Verificación de contraseña con timing"""
+    """
+    Verificación de contraseña con timing y manejo de errores
+    """
     start = time.time()
-    result = pwd_ctx.verify(p, h)
-    elapsed = (time.time() - start) * 1000
-    print(f"[AUTH] Verificación en {elapsed:.0f}ms")
-    return result
+    try:
+        result = pwd_ctx.verify(p, h)
+        elapsed = (time.time() - start) * 1000
+        print(f"[AUTH] Verificación en {elapsed:.0f}ms")
+        return result
+    except Exception as e:
+        # Si falla la verificación (hash antiguo, corrupto, o inválido)
+        elapsed = (time.time() - start) * 1000
+        print(f"[AUTH] ❌ Error al verificar hash en {elapsed:.0f}ms: {type(e).__name__}")
+        return False
 
 
 def create_access_token(data: dict, minutes: int = None):
