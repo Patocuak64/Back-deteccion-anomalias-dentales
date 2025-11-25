@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .router import router
-from .settings import settings
+from .settings import settings, print_optimization_settings  # ← AGREGADO
 from .model_store import get_model
 
 # BASE DE DATOS Y AUTENTICACIÓN
@@ -57,6 +57,10 @@ app.add_middleware(
 @app.on_event("startup")
 def startup_event():
     """Se ejecuta al iniciar la aplicación"""
+    
+    # ⚡ IMPRIMIR CONFIGURACIÓN DE OPTIMIZACIÓN
+    print_optimization_settings()  # ← AGREGADO
+    
     _ = get_model()
     print("Modelo YOLO cargado")
     print("Base de datos SQLite lista (dental.db)")
