@@ -4,13 +4,14 @@ from fastapi.responses import JSONResponse
 from typing import Optional
 from sqlalchemy.orm import Session
 import json
-from datetime import datetime, timezone, timedelta  # ⬅️ NUEVO
+from datetime import datetime, timezone, timedelta
 
 from .settings import settings
 from .image_io import pil_from_upload, pil_from_url, img_to_base64_png
 from .inference import run_inference, CLASS_NAMES, CLASS_COLORS
 from .model_store import get_model_path
 from .schemas import AnalyzeResponse, AnalyzeUrlRequest
+from .image_validator import validate_dental_xray  # ⚡ NUEVO
 
 # auth + BD + modelos
 from .dependencies import get_db
@@ -95,10 +96,35 @@ async def analyze(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
+    # ⚡ VALIDACIÓN 1: Tipo de contenido básico
     if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Se requiere un archivo de imagen.")
-
-    img = pil_from_upload(await file.read())
+        raise HTTPException(
+            status_code=400, 
+            detail="Se requiere un archivo de imagen (JPG, PNG, etc.)"
+        )
+    
+    # Leer archivo
+    file_bytes = await file.read()
+    
+    # ⚡ VALIDACIÓN 2: Validación completa de imagen radiográfica
+    print(f"[IMAGE] Validando archivo: {file.filename}")
+    is_valid, error_msg, validation_details = validate_dental_xray(
+        file_bytes, 
+        file.filename
+    )
+    
+    if not is_valid:
+        print(f"[IMAGE] ❌ Imagen rechazada: {error_msg}")
+        raise HTTPException(
+            status_code=400,
+            detail=error_msg  # Mensaje claro para el usuario
+        )
+    
+    print(f"[IMAGE] ✅ Imagen válida (X-ray: {validation_details['xray_confidence']:.1f}%, Panoramic: {validation_details['panoramic_confidence']:.1f}%)")
+    
+    # ✅ Si llega aquí, la imagen es válida
+    # Continuar con análisis YOLO normal
+    img = pil_from_upload(file_bytes)
     annotated, payload = run_inference(img, confidence)
 
     detections = payload.get("detections", []) or []
@@ -164,10 +190,34 @@ async def analyze_public(
     confidence: float = Form(settings.DEFAULT_CONFIDENCE),
     return_image: bool = Form(False),
 ):
+    # ⚡ VALIDACIÓN 1: Tipo de contenido básico
     if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Se requiere un archivo de imagen.")
-
-    img = pil_from_upload(await file.read())
+        raise HTTPException(
+            status_code=400, 
+            detail="Se requiere un archivo de imagen (JPG, PNG, etc.)"
+        )
+    
+    # Leer archivo
+    file_bytes = await file.read()
+    
+    # ⚡ VALIDACIÓN 2: Validación completa de imagen radiográfica
+    print(f"[IMAGE] Validando archivo: {file.filename}")
+    is_valid, error_msg, validation_details = validate_dental_xray(
+        file_bytes, 
+        file.filename
+    )
+    
+    if not is_valid:
+        print(f"[IMAGE] ❌ Imagen rechazada: {error_msg}")
+        raise HTTPException(
+            status_code=400,
+            detail=error_msg
+        )
+    
+    print(f"[IMAGE] ✅ Imagen válida")
+    
+    # ✅ Continuar con análisis YOLO
+    img = pil_from_upload(file_bytes)
     annotated, payload = run_inference(img, confidence)
     if return_image:
         payload["image_base64"] = img_to_base64_png(annotated)
@@ -179,6 +229,11 @@ async def analyze_public(
 # -------------------------------------------------------------------
 @router.post("/analyze-url", response_model=AnalyzeResponse, tags=["analyze"])
 def analyze_url(req: AnalyzeUrlRequest):
+    """
+    NOTA: Este endpoint NO valida si es radiografía panorámica
+    porque la imagen viene de URL externa sin acceso al archivo original.
+    Se recomienda usar /analyze o /analyze-public para validación completa.
+    """
     img = pil_from_url(str(req.url))
     annotated, payload = run_inference(img, req.confidence)
     if req.return_image:
@@ -356,7 +411,7 @@ def get_fdi_map():
     }
 
 # ═══════════════════════════════════════════════════════════════════════════
-# GESTIÓN Y COMPARACIÓN DE MODELOS (agregar al final del archivo)
+# GESTIÓN Y COMPARACIÓN DE MODELOS
 # ═══════════════════════════════════════════════════════════════════════════
 
 @router.get("/models/available", tags=["models"])
@@ -371,7 +426,7 @@ def list_available_models():
             "architecture": "YOLOv8n/s",
             "version": "v8",
             "epochs": 100,
-            "status": "production",  # production, experimental, incomplete
+            "status": "production",
             "is_active": True,
             "metrics": {
                 "map50": 0.790,

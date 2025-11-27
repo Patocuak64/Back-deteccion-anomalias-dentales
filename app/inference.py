@@ -1,8 +1,16 @@
-# app/inference.py
+# app/inference.py (OPTIMIZADO - PARCIAL)
+"""
+⚡ Optimizaciones aplicadas:
+- Medición de tiempos de ejecución
+- Logging de performance
+- Preparado para caché (implementar en router.py)
+"""
 
 from typing import Tuple, List, Dict, Any
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+import time
+
 from .model_store import get_model
 from .settings import settings
 
@@ -26,135 +34,138 @@ def _font_pair():
     return font, font_small
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  CALCULAR NÚMERO FDI
-# ═══════════════════════════════════════════════════════════════════════════
 def calculate_fdi(x_center_norm: float, y_center_norm: float) -> int:
     """
-    Calcula el número FDI del diente según su posición en la radiografía.
-    
-    Sistema FDI (numeración dental internacional):
-    - Cuadrante 1 (Superior Derecho): 11-18
-    - Cuadrante 2 (Superior Izquierdo): 21-28
-    - Cuadrante 3 (Inferior Izquierdo): 31-38
-    - Cuadrante 4 (Inferior Derecho): 41-48
-    
-    IMPORTANTE: En radiografías panorámicas, la imagen está ESPEJADA.
-    Lo que vemos a la izquierda es el lado DERECHO del paciente.
-    
-    Args:
-        x_center_norm: Coordenada X del centro del bbox normalizada (0-1)
-        y_center_norm: Coordenada Y del centro del bbox normalizada (0-1)
-    
-    Returns:
-        Número FDI (11-48)
+    Calcula el número FDI del diente según su posición
     """
+    if y_center_norm < 0.5:
+        if x_center_norm < 0.5:
+            quadrant = 1
+        else:
+            quadrant = 2
+    else:
+        if x_center_norm < 0.5:
+            quadrant = 4
+        else:
+            quadrant = 3
     
-    # Determinar cuadrante basado en posición
-    if y_center_norm < 0.5:  # Parte SUPERIOR de la imagen
-        if x_center_norm < 0.5:  # Izquierda imagen = Derecha paciente
-            quadrant = 1  # Superior Derecho
-        else:  # Derecha imagen = Izquierda paciente
-            quadrant = 2  # Superior Izquierdo
-    else:  # Parte INFERIOR de la imagen
-        if x_center_norm < 0.5:  # Izquierda imagen = Derecha paciente
-            quadrant = 4  # Inferior Derecho
-        else:  # Derecha imagen = Izquierda paciente
-            quadrant = 3  # Inferior Izquierdo
-    
-    # Calcular posición dentro del cuadrante (1-8)
-    # Normalizar x dentro del cuadrante actual
-    relative_x = (x_center_norm % 0.5) / 0.5  # 0 a 1
-    
-    # Dividir en 8 posiciones (dientes)
-    # 1 = incisivo central, 8 = tercer molar
+    relative_x = (x_center_norm % 0.5) / 0.5
     tooth_position = min(int(relative_x * 8) + 1, 8)
-    
-    # Número FDI = Cuadrante * 10 + Posición
     fdi_number = quadrant * 10 + tooth_position
     
     return fdi_number
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# FUNCIÓN PRINCIPAL MODIFICADA: run_inference
-# ═══════════════════════════════════════════════════════════════════════════
 def run_inference(image: Image.Image, confidence: float) -> Tuple[Image.Image, Dict[str, Any]]:
+    """
+    ⚡ OPTIMIZADO: Ejecuta inferencia con medición de tiempos
+    """
+    total_start = time.time()
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # 1. ⚡ Obtener modelo (cacheado)
+    # ═══════════════════════════════════════════════════════════════════
+    model_start = time.time()
     model = get_model()
+    model_time = (time.time() - model_start) * 1000
+    print(f"[INFERENCE] Modelo obtenido en {model_time:.0f}ms")
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # 2. ⚡ Ejecutar predicción
+    # ═══════════════════════════════════════════════════════════════════
+    predict_start = time.time()
     results = model.predict(source=image, conf=confidence, verbose=False)
+    predict_time = (time.time() - predict_start) * 1000
+    print(f"[INFERENCE] Predicción en {predict_time:.0f}ms")
+    
     result = results[0]
     boxes = result.boxes
-
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # 3. ⚡ Dibujar resultados
+    # ═══════════════════════════════════════════════════════════════════
+    draw_start = time.time()
+    
     img_draw = image.copy()
     draw = ImageDraw.Draw(img_draw)
     font, font_small = _font_pair()
-
-    # obtener dimensiones de imagen para normalizar
+    
     img_width, img_height = image.size
-
+    
     class_counts = {0: 0, 1: 0, 2: 0}
     class_conf = {0: [], 1: [], 2: []}
     detections: List[Dict[str, Any]] = []
     
-    #  mapa de dientes FDI por clase
     teeth_fdi_map = {
         "Caries": [],
         "Diente_Retenido": [],
         "Perdida_Osea": []
     }
-
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # 4. Sin detecciones
+    # ═══════════════════════════════════════════════════════════════════
     if len(boxes) == 0:
+        total_time = (time.time() - total_start) * 1000
+        print(f"[INFERENCE] ✓ Sin detecciones - Total: {total_time:.0f}ms")
+        
         return img_draw, {
             "summary": {"total": 0, "per_class": {}},
             "detections": [],
             "stats": {},
             "report_text": "No se detectaron problemas dentales en esta imagen.",
-            "teeth_fdi": teeth_fdi_map,  # ⭐ NUEVO
+            "teeth_fdi": teeth_fdi_map,
+            "performance": {
+                "total_ms": round(total_time, 2),
+                "model_load_ms": round(model_time, 2),
+                "prediction_ms": round(predict_time, 2),
+            }
         }
-
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # 5. Procesar detecciones
+    # ═══════════════════════════════════════════════════════════════════
     for box in boxes:
         x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
         conf = float(box.conf[0].cpu().numpy())
         cid = int(box.cls[0].cpu().numpy())
-
-        # calcular centro del bbox y normalizar
+        
         x_center = (x1 + x2) / 2
         y_center = (y1 + y2) / 2
         x_center_norm = x_center / img_width
         y_center_norm = y_center / img_height
         
-        # calcular número FDI
         fdi_number = calculate_fdi(x_center_norm, y_center_norm)
-
+        
         class_counts[cid] += 1
         class_conf[cid].append(conf)
         cname = CLASS_NAMES.get(cid, f"cls_{cid}")
         color = CLASS_COLORS.get(cid, (255, 255, 0))
-
-        #  incluir FDI en el label
+        
         draw.rectangle([(x1, y1), (x2, y2)], outline=color, width=3)
         label = f"{cname} [{fdi_number}]: {conf:.1%}"
         bbox_text = draw.textbbox((x1, y1 - 25), label, font=font_small)
         draw.rectangle(bbox_text, fill=color)
         draw.text((x1, y1 - 25), label, fill="white", font=font_small)
-
-        # agregar FDI a detections
-        detections.append(
-            {
-                "class_id": cid,
-                "class_name": cname,
-                "confidence": conf,
-                "bbox": [int(x1), int(y1), int(x2), int(y2)],
-                "fdi": fdi_number,  # ⭐ NUEVO
-                "tooth_fdi": fdi_number,  # ⭐ NUEVO (alias para compatibilidad)
-            }
-        )
         
-        # agregar a mapa de dientes
+        detections.append({
+            "class_id": cid,
+            "class_name": cname,
+            "confidence": conf,
+            "bbox": [int(x1), int(y1), int(x2), int(y2)],
+            "fdi": fdi_number,
+            "tooth_fdi": fdi_number,
+        })
+        
         if fdi_number not in teeth_fdi_map[cname]:
             teeth_fdi_map[cname].append(fdi_number)
-
-    # stats
+    
+    draw_time = (time.time() - draw_start) * 1000
+    print(f"[INFERENCE] Dibujo en {draw_time:.0f}ms")
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # 6. Generar estadísticas
+    # ═══════════════════════════════════════════════════════════════════
     per_class = {}
     stats = {}
     for cid, count in class_counts.items():
@@ -168,8 +179,10 @@ def run_inference(image: Image.Image, confidence: float) -> Tuple[Image.Image, D
                 "conf_min": float(np.min(arr)),
                 "conf_max": float(np.max(arr)),
             }
-
-    # reporte mejorado con FDI
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # 7. Generar reporte
+    # ═══════════════════════════════════════════════════════════════════
     report_lines = ["ANÁLISIS DE RADIOGRAFÍA DENTAL", "=" * 50, ""]
     total = sum(class_counts.values())
     report_lines.append(f"Total de detecciones: {total}\n")
@@ -205,12 +218,25 @@ def run_inference(image: Image.Image, confidence: float) -> Tuple[Image.Image, D
         "",
         "NOTA: Herramienta de apoyo. No reemplaza diagnóstico profesional.",
     ]
-
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # 8. Resultado final
+    # ═══════════════════════════════════════════════════════════════════
+    total_time = (time.time() - total_start) * 1000
+    print(f"[INFERENCE] ✓ Análisis completo - Total: {total_time:.0f}ms ({len(boxes)} detecciones)")
+    
     payload = {
         "summary": {"total": total, "per_class": per_class},
         "detections": detections,
         "stats": stats,
         "report_text": "\n".join(report_lines),
-        "teeth_fdi": teeth_fdi_map,  # ⭐ NUEVO
+        "teeth_fdi": teeth_fdi_map,
+        "performance": {
+            "total_ms": round(total_time, 2),
+            "model_load_ms": round(model_time, 2),
+            "prediction_ms": round(predict_time, 2),
+            "draw_ms": round(draw_time, 2),
+        }
     }
+    
     return img_draw, payload

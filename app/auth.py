@@ -11,6 +11,7 @@ import time
 from . import models
 from .dependencies import get_db
 from .settings import settings
+from .email_validator import validate_email  # ⚡ AGREGADO
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -127,12 +128,21 @@ def get_current_user(
 
 @router.post("/register", response_model=Token)
 def register(user_in: UserCreate, db: Session = Depends(get_db)):
-    """⚡ OPTIMIZADO: Registro de usuario"""
+    """⚡ OPTIMIZADO: Registro de usuario con validación de email"""
     total_start = time.time()
     
     # Normalizar email
     normalized_email = user_in.email.strip().lower()
     print(f"[AUTH] Registrando usuario: {normalized_email}")
+    
+    # ⚡ VALIDACIÓN DE EMAIL (AGREGADA)
+    is_valid_email, email_error = validate_email(normalized_email)
+    if not is_valid_email:
+        print(f"[AUTH] ❌ Email rechazado: {email_error}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Email inválido: {email_error}"
+        )
     
     # Verificar existencia
     check_start = time.time()
@@ -180,12 +190,22 @@ def login(
     form: OAuth2PasswordRequestForm = Depends(), 
     db: Session = Depends(get_db)
 ):
-    """⚡ OPTIMIZADO: Inicio de sesión"""
+    """⚡ OPTIMIZADO: Inicio de sesión con validación de email"""
     total_start = time.time()
     
     # Normalizar email
     normalized_email = form.username.strip().lower()
     print(f"[AUTH] Login: {normalized_email}")
+    
+    # ⚡ VALIDACIÓN DE EMAIL (AGREGADA)
+    is_valid_email, email_error = validate_email(normalized_email)
+    if not is_valid_email:
+        # Mensaje genérico por seguridad (no revelar si es email o password)
+        print(f"[AUTH] ❌ Email inválido rechazado en login: {email_error}")
+        raise HTTPException(
+            status_code=401, 
+            detail="Correo o contraseña incorrectos"
+        )
     
     # Buscar usuario
     query_start = time.time()
