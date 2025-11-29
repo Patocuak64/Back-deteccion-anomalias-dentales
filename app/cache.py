@@ -1,6 +1,6 @@
 # app/cache.py
 """
-⚡ Sistema de caché en memoria para resultados de análisis
+ Sistema de caché en memoria para resultados de análisis
 Evita re-procesar la misma imagen múltiples veces
 """
 

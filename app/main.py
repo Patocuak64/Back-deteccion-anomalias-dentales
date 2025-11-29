@@ -58,7 +58,7 @@ app.add_middleware(
 def startup_event():
     """Se ejecuta al iniciar la aplicación"""
     
-    # ⚡ IMPRIMIR CONFIGURACIÓN DE OPTIMIZACIÓN
+    # IMPRIMIR CONFIGURACIÓN DE OPTIMIZACIÓN
     print_optimization_settings()  # ← AGREGADO
     
     _ = get_model()

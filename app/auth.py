@@ -11,12 +11,12 @@ import time
 from . import models
 from .dependencies import get_db
 from .settings import settings
-from .email_validator import validate_email  # ⚡ AGREGADO
+from .email_validator import validate_email  
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ═══════════════════════════════════════════════════════════════════════
-# ⚡ OPTIMIZACIÓN: Configurar bcrypt con rounds ajustables
+# OPTIMIZACIÓN: Configurar bcrypt con rounds ajustables
 # ═══════════════════════════════════════════════════════════════════════
 pwd_ctx = CryptContext(
     schemes=["bcrypt"],
@@ -128,14 +128,14 @@ def get_current_user(
 
 @router.post("/register", response_model=Token)
 def register(user_in: UserCreate, db: Session = Depends(get_db)):
-    """⚡ OPTIMIZADO: Registro de usuario con validación de email"""
+    """ OPTIMIZADO: Registro de usuario con validación de email"""
     total_start = time.time()
     
     # Normalizar email
     normalized_email = user_in.email.strip().lower()
     print(f"[AUTH] Registrando usuario: {normalized_email}")
     
-    # ⚡ VALIDACIÓN DE EMAIL (AGREGADA)
+    # VALIDACIÓN DE EMAIL (AGREGADA)
     is_valid_email, email_error = validate_email(normalized_email)
     if not is_valid_email:
         print(f"[AUTH] ❌ Email rechazado: {email_error}")
@@ -190,14 +190,14 @@ def login(
     form: OAuth2PasswordRequestForm = Depends(), 
     db: Session = Depends(get_db)
 ):
-    """⚡ OPTIMIZADO: Inicio de sesión con validación de email"""
+    """ OPTIMIZADO: Inicio de sesión con validación de email"""
     total_start = time.time()
     
     # Normalizar email
     normalized_email = form.username.strip().lower()
     print(f"[AUTH] Login: {normalized_email}")
     
-    # ⚡ VALIDACIÓN DE EMAIL (AGREGADA)
+    #  VALIDACIÓN DE EMAIL (AGREGADA)
     is_valid_email, email_error = validate_email(normalized_email)
     if not is_valid_email:
         # Mensaje genérico por seguridad (no revelar si es email o password)
@@ -244,7 +244,7 @@ def me(current: models.User = Depends(get_current_user)):
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# ⚡ ENDPOINT DE DIAGNÓSTICO
+#  ENDPOINT DE DIAGNÓSTICO
 # ═══════════════════════════════════════════════════════════════════════
 @router.get("/performance-test")
 def performance_test():

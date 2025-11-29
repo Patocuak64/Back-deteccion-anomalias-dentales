@@ -1,11 +1,4 @@
-# app/inference.py (OPTIMIZADO - PARCIAL)
-"""
-⚡ Optimizaciones aplicadas:
-- Medición de tiempos de ejecución
-- Logging de performance
-- Preparado para caché (implementar en router.py)
-"""
-
+# app/inference.py
 from typing import Tuple, List, Dict, Any
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -58,12 +51,12 @@ def calculate_fdi(x_center_norm: float, y_center_norm: float) -> int:
 
 def run_inference(image: Image.Image, confidence: float) -> Tuple[Image.Image, Dict[str, Any]]:
     """
-    ⚡ OPTIMIZADO: Ejecuta inferencia con medición de tiempos
+    Ejecuta inferencia con medición de tiempos
     """
     total_start = time.time()
     
     # ═══════════════════════════════════════════════════════════════════
-    # 1. ⚡ Obtener modelo (cacheado)
+    # 1. Obtener modelo (cacheado)
     # ═══════════════════════════════════════════════════════════════════
     model_start = time.time()
     model = get_model()
@@ -71,7 +64,7 @@ def run_inference(image: Image.Image, confidence: float) -> Tuple[Image.Image, D
     print(f"[INFERENCE] Modelo obtenido en {model_time:.0f}ms")
     
     # ═══════════════════════════════════════════════════════════════════
-    # 2. ⚡ Ejecutar predicción
+    # 2. Ejecutar predicción
     # ═══════════════════════════════════════════════════════════════════
     predict_start = time.time()
     results = model.predict(source=image, conf=confidence, verbose=False)
@@ -82,7 +75,7 @@ def run_inference(image: Image.Image, confidence: float) -> Tuple[Image.Image, D
     boxes = result.boxes
     
     # ═══════════════════════════════════════════════════════════════════
-    # 3. ⚡ Dibujar resultados
+    # 3. Dibujar resultados
     # ═══════════════════════════════════════════════════════════════════
     draw_start = time.time()
     

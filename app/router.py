@@ -11,7 +11,7 @@ from .image_io import pil_from_upload, pil_from_url, img_to_base64_png
 from .inference import run_inference, CLASS_NAMES, CLASS_COLORS
 from .model_store import get_model_path
 from .schemas import AnalyzeResponse, AnalyzeUrlRequest
-from .image_validator import validate_dental_xray  # ⚡ NUEVO
+from .image_validator import validate_dental_xray  
 
 # auth + BD + modelos
 from .dependencies import get_db
@@ -96,7 +96,7 @@ async def analyze(
     db: Session = Depends(get_db),
     user: models.User = Depends(get_current_user),
 ):
-    # ⚡ VALIDACIÓN 1: Tipo de contenido básico
+    # VALIDACIÓN 1: Tipo de contenido básico
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(
             status_code=400, 
@@ -106,7 +106,7 @@ async def analyze(
     # Leer archivo
     file_bytes = await file.read()
     
-    # ⚡ VALIDACIÓN 2: Validación completa de imagen radiográfica
+    # VALIDACIÓN 2: Validación completa de imagen radiográfica
     print(f"[IMAGE] Validando archivo: {file.filename}")
     is_valid, error_msg, validation_details = validate_dental_xray(
         file_bytes, 
@@ -122,7 +122,7 @@ async def analyze(
     
     print(f"[IMAGE] ✅ Imagen válida (X-ray: {validation_details['xray_confidence']:.1f}%, Panoramic: {validation_details['panoramic_confidence']:.1f}%)")
     
-    # ✅ Si llega aquí, la imagen es válida
+    # Si llega aquí, la imagen es válida
     # Continuar con análisis YOLO normal
     img = pil_from_upload(file_bytes)
     annotated, payload = run_inference(img, confidence)
@@ -190,7 +190,7 @@ async def analyze_public(
     confidence: float = Form(settings.DEFAULT_CONFIDENCE),
     return_image: bool = Form(False),
 ):
-    # ⚡ VALIDACIÓN 1: Tipo de contenido básico
+    # VALIDACIÓN 1: Tipo de contenido básico
     if not file.content_type or not file.content_type.startswith("image/"):
         raise HTTPException(
             status_code=400, 
@@ -200,7 +200,7 @@ async def analyze_public(
     # Leer archivo
     file_bytes = await file.read()
     
-    # ⚡ VALIDACIÓN 2: Validación completa de imagen radiográfica
+    # VALIDACIÓN 2: Validación completa de imagen radiográfica
     print(f"[IMAGE] Validando archivo: {file.filename}")
     is_valid, error_msg, validation_details = validate_dental_xray(
         file_bytes, 
@@ -216,7 +216,7 @@ async def analyze_public(
     
     print(f"[IMAGE] ✅ Imagen válida")
     
-    # ✅ Continuar con análisis YOLO
+    # Continuar con análisis YOLO
     img = pil_from_upload(file_bytes)
     annotated, payload = run_inference(img, confidence)
     if return_image:

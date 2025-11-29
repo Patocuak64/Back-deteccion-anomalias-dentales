@@ -45,19 +45,11 @@ def validate_image_file(file_bytes: bytes, filename: str) -> Tuple[bool, str, Op
     return True, "", img
 
 # ─────────────────────────────────────────────────────────────
-# 2. ¿Parece radiografía? (HSV + umbrales ajustados) ⚡
+# 2. ¿Parece radiografía? (HSV + umbrales ajustados)
 # ─────────────────────────────────────────────────────────────
 
 def validate_is_xray(img: Image.Image) -> Tuple[bool, str, float]:
-    """
-    Valida si la imagen tiene características de radiografía dental.
-    
-    MEJORAS:
-    - Umbrales de saturación ajustados para rechazar fotos de animales
-    - strong_color: 25% → 10%
-    - medium_color: 60% → 40%
-    - mean_saturation: 0.18 → 0.10
-    """
+
 
     # Convertimos a HSV para analizar saturación
     hsv = img.convert("HSV")
@@ -151,7 +143,7 @@ def validate_is_xray(img: Image.Image) -> Tuple[bool, str, float]:
             (dark_ratio + bright_ratio) * 100.0,
         )
 
-    # ✅ Es radiografía válida
+    # Es radiografía válida
     confidence = std + mid_ratio * 50.0
     return True, "", confidence
 
@@ -206,9 +198,9 @@ def validate_dental_xray(file_bytes: bytes, filename: str) -> Tuple[bool, str, D
     details["panoramic_confidence"] = float(pano_score)
 
     if is_pano_like:
-        return True, "✅ Radiografía dental válida (formato compatible con panorámica).", details
+        return True, " Radiografía dental válida (formato compatible con panorámica).", details
     else:
         return True, (
-            "✅ Radiografía dental válida. "
+            " Radiografía dental válida. "
             "Nota: por su formato podría no ser panorámica (periapical/bitewing u otro tipo)."
         ), details
