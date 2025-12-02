@@ -1,0 +1,17 @@
+# data/dental_valid.yaml
+
+# Carpeta raíz del dataset limpio
+path: "C:/Users/jhonn/OneDrive/Desktop/dataset_dientes/el_candidato/YOLO/YOLO/dataset_3cls_clean"
+
+# Subcarpetas relativas a "path"
+train: "train/images"
+val: "valid/images"
+
+# Número de clases
+nc: 3
+
+# Nombres de las clases (deben coincidir con las del modelo YOLO)
+names:
+  0: "caries"
+  1: "impacted tooth"
+  2: "Bone Loss"
