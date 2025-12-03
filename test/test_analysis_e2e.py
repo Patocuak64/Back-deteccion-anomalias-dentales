@@ -1,15 +1,9 @@
-# tests/test_analysis_e2e.py
+# test/test_analysis_e2e.py
 """
 Tests End-to-End para el flujo completo de análisis.
 
-Requisitos:
-- Backend corriendo en http://localhost:8000
-- Base de datos limpia (o usar usuario único por test)
-- Imágenes de prueba en test/test_images/
-
 Para ejecutar:
-1. Iniciar backend: uvicorn app.main:app --reload
-2. Ejecutar: pytest tests/test_analysis_e2e.py -v -s
+    pytest test/test_analysis_e2e.py -v -s
 """
 
 import pytest
@@ -19,7 +13,6 @@ from pathlib import Path
 import time
 from PIL import Image
 import io
-import numpy as np
 import uuid
 
 # Agregar la carpeta raíz al path
@@ -28,297 +21,382 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Importar la app
 from app.main import app
 
+# Importar configuración del dataset
+try:
+    from test.test_config import (
+        dataset_exists,
+        get_random_dataset_image,
+        load_random_image_as_buffer,
+        load_random_image_as_bytes,
+        get_dataset_info,
+        get_random_dataset_images
+    )
+    DATASET_DISPONIBLE = dataset_exists()
+except ImportError:
+    DATASET_DISPONIBLE = False
+
 # Cliente de prueba
 client = TestClient(app)
 
 
 # ═══════════════════════════════════════════════════════════════════
-# FIXTURES (datos compartidos entre tests)
+# HELPER: Crear imagen de fallback
 # ═══════════════════════════════════════════════════════════════════
 
-@pytest.fixture(scope="module")
-def usuario_test():
-    """
-    Crea un usuario de prueba único.
-    Se ejecuta UNA VEZ por módulo (todos los tests lo comparten).
-    """
-    # Email único para evitar conflictos
-    email = f"test_{uuid.uuid4().hex[:8]}@dentalsmart.dev"
-    password = "TestPassword123!"
-    name = "Usuario Test E2E"
-
-    payload = {
-        "email": email,
-        "password": password,
-        "name": name,
-    }
-
-    response = client.post("/auth/register", json=payload)
-
-    # 200 → se registró; 400 → ya existía (también válido)
-    if response.status_code not in [200, 400]:
-        pytest.fail(
-            f"Error al registrar usuario: {response.status_code} - {response.text}"
-        )
-
-    print(f"\n✅ Usuario de prueba creado: {email}")
-
-    return {
-        "email": email,
-        "password": password,
-        "name": name,
-    }
-
-
-@pytest.fixture(scope="module")
-def token_auth(usuario_test):
-    """
-    Obtiene token JWT válido para el usuario de prueba.
-    IMPORTANTE: el endpoint /auth/login usa OAuth2PasswordRequestForm,
-    por lo que espera campos 'username' y 'password' en FORM DATA,
-    NO JSON.
-    """
-    payload = {
-        "username": usuario_test["email"],  # el backend usa username, nosotros le pasamos el email
-        "password": usuario_test["password"],
-    }
-
-    # NOTA: usamos data=..., NO json=...
-    response = client.post("/auth/login", data=payload)
-
-    if response.status_code != 200:
-        pytest.fail(
-            f"Error al hacer login: {response.status_code} - {response.text}"
-        )
-
-    data = response.json()
-    token = data.get("access_token")
-
-    if not token:
-        pytest.fail("No se recibió access_token en la respuesta")
-
-    print(f"✅ Token obtenido: {token[:20]}...")
-
-    return token
-
-
-@pytest.fixture
-def imagen_radiografia_test():
-    """
-    Crea una imagen de radiografía de prueba.
-    Se ejecuta CADA VEZ que un test la necesite.
-    """
-    # Crear imagen en escala de grises (pseudo-rx)
+def crear_imagen_fallback():
+    """Crea una imagen sintética como fallback"""
+    import numpy as np
     arr = np.random.randint(60, 180, (600, 1200), dtype=np.uint8)
     arr = np.stack([arr, arr, arr], axis=2)
-
     img = Image.fromarray(arr, mode="RGB")
     buffer = io.BytesIO()
     img.save(buffer, format="JPEG", quality=85)
     buffer.seek(0)
-
-    return buffer
+    return buffer, "imagen_sintetica.jpg"
 
 
 # ═══════════════════════════════════════════════════════════════════
-# TESTS END-TO-END
+# FIXTURES
 # ═══════════════════════════════════════════════════════════════════
 
+@pytest.fixture(scope="module")
+def usuario_y_token():
+    """
+    Crea un usuario de prueba Y obtiene su token.
+    Usa @example.com que es un dominio válido para testing según RFC 2606.
+    """
+    # IMPORTANTE: Usar @example.com en lugar de @dentalsmart.test
+    # porque Pydantic's EmailStr rechaza dominios .test
+    unique_id = uuid.uuid4().hex[:8]
+    email = f"test_{unique_id}@example.com"
+    password = "TestPassword123!"
+    
+    # 1) Registrar
+    payload_register = {
+        "email": email,
+        "password": password,
+        "name": "Usuario Test E2E",
+    }
+    
+    response_register = client.post("/auth/register", json=payload_register)
+    
+    # Si ya existe (400), intentar login directamente
+    if response_register.status_code == 400:
+        print(f"\n⚠️  Usuario ya existe, intentando login...")
+    elif response_register.status_code not in [200, 201]:
+        # Mostrar error detallado
+        print(f"\n❌ Error en registro: {response_register.status_code}")
+        print(f"   Detalle: {response_register.text}")
+        pytest.fail(f"Error al registrar: {response_register.status_code} - {response_register.text}")
+    else:
+        print(f"\n✅ Usuario registrado: {email}")
+    
+    # 2) Login
+    payload_login = {
+        "username": email,
+        "password": password,
+    }
+    
+    response_login = client.post("/auth/login", data=payload_login)
+    
+    if response_login.status_code != 200:
+        print(f"\n❌ Error en login: {response_login.status_code}")
+        print(f"   Detalle: {response_login.text}")
+        pytest.fail(f"Error al hacer login: {response_login.status_code} - {response_login.text}")
+    
+    data = response_login.json()
+    token = data.get("access_token")
+    
+    if not token:
+        pytest.fail("No se recibió access_token")
+    
+    print(f"✅ Token obtenido: {token[:20]}...")
+    
+    return {
+        "email": email,
+        "password": password,
+        "token": token,
+        "headers": {"Authorization": f"Bearer {token}"}
+    }
+
+
+@pytest.fixture
+def imagen_para_test():
+    """
+    Obtiene una imagen para testing.
+    Usa dataset si está disponible, sino crea sintética.
+    """
+    if DATASET_DISPONIBLE:
+        result = load_random_image_as_buffer()
+        if result:
+            buffer, filename = result
+            print(f"\n🖼️  Usando imagen del dataset: {filename}")
+            return buffer, filename
+    
+    # Fallback
+    print("\n⚠️  Usando imagen sintética")
+    return crear_imagen_fallback()
+
+
+# ═══════════════════════════════════════════════════════════════════
+# TESTS DE CONFIGURACIÓN
+# ═══════════════════════════════════════════════════════════════════
+
+class TestDatasetConfiguration:
+    """Tests para verificar la configuración del dataset"""
+
+    @pytest.mark.unit
+    def test_dataset_info(self):
+        """Mostrar información del dataset configurado"""
+        if not DATASET_DISPONIBLE:
+            print("\n⚠️  Dataset no disponible")
+            assert True
+            return
+        
+        info = get_dataset_info()
+        print(f"\n📁 Dataset: {info['path']}")
+        print(f"   Existe: {info['exists']}")
+        print(f"   Imágenes: {info['total_images']}")
+        assert True
+
+    @pytest.mark.unit
+    def test_dataset_accesible(self):
+        """Verificar que el dataset es accesible"""
+        if not DATASET_DISPONIBLE:
+            pytest.skip("Dataset no disponible")
+        
+        img_path = get_random_dataset_image()
+        assert img_path is not None
+        assert img_path.exists()
+        print(f"\n✅ Dataset OK: {img_path.name}")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# TESTS BÁSICOS
+# ═══════════════════════════════════════════════════════════════════
 
 class TestAnalysisE2EBasico:
-    """Tests básicos del flujo completo"""
+    """Tests básicos del flujo"""
 
     @pytest.mark.e2e
     def test_health_check(self):
         """El endpoint /health debe estar disponible"""
         response = client.get("/health")
         assert response.status_code == 200
+        print(f"\n✅ Health check OK")
 
     @pytest.mark.e2e
-    def test_usuario_puede_hacer_login(self, usuario_test):
-        """El usuario de prueba puede hacer login"""
-
-        payload = {
-            "username": usuario_test["email"],
-            "password": usuario_test["password"],
-        }
-
-        response = client.post("/auth/login", data=payload)
-
-        assert response.status_code == 200, response.text
-        data = response.json()
-        assert "access_token" in data
-        assert data["access_token"] != ""
+    def test_usuario_puede_hacer_login(self, usuario_y_token):
+        """El usuario puede autenticarse"""
+        assert usuario_y_token["token"] is not None
+        assert len(usuario_y_token["token"]) > 20
+        print(f"\n✅ Login verificado para: {usuario_y_token['email']}")
 
 
-class TestAnalysisE2EFlujoCompleto:
-    """Tests del flujo completo de análisis"""
+# ═══════════════════════════════════════════════════════════════════
+# TESTS DE ANÁLISIS CON DATASET
+# ═══════════════════════════════════════════════════════════════════
+
+class TestAnalysisE2EConDataset:
+    """Tests del flujo completo con imágenes"""
 
     @pytest.mark.e2e
     @pytest.mark.slow
-    def test_flujo_completo_con_imagen_sintetica(
-        self, token_auth, imagen_radiografia_test
-    ):
-        """
-        Flujo completo:
-        1. Usuario autenticado
-        2. Sube imagen
-        3. Sistema analiza
-        4. Retorna resultados
-        """
-        files = {
-            "file": ("radiografia_test.jpg", imagen_radiografia_test, "image/jpeg")
-        }
-        headers = {"Authorization": f"Bearer {token_auth}"}
-
+    def test_analisis_con_imagen(self, usuario_y_token, imagen_para_test):
+        """Flujo completo de análisis"""
+        buffer, filename = imagen_para_test
+        
+        files = {"file": (filename, buffer, "image/jpeg")}
+        
         inicio = time.time()
-        response = client.post("/analyze", files=files, headers=headers)
-        tiempo_total = time.time() - inicio
-
-        print(f"\n⏱️  Tiempo total de análisis: {tiempo_total:.2f}s")
-
+        response = client.post(
+            "/analyze",
+            files=files,
+            headers=usuario_y_token["headers"]
+        )
+        tiempo = time.time() - inicio
+        
+        print(f"\n⏱️  Tiempo: {tiempo:.2f}s")
+        print(f"📁 Archivo: {filename}")
+        print(f"📊 Status: {response.status_code}")
+        
         if response.status_code == 400:
-            print(
-                f"⚠️  Imagen sintética rechazada (esperado): "
-                f"{response.json().get('detail')}"
-            )
-            pytest.skip("Imagen sintética rechazada por validación")
-
+            detail = response.json().get('detail', '')
+            print(f"⚠️  Rechazada: {detail}")
+            pytest.skip(f"Imagen rechazada: {detail}")
+        
         assert response.status_code == 200, f"Error: {response.text}"
-
+        
         data = response.json()
-        assert "summary" in data or "detections" in data or "detecciones" in data
-
-        print("✅ Análisis completado exitosamente")
+        assert "summary" in data
+        assert "detections" in data
+        
+        total = data["summary"].get("total", 0)
+        print(f"✅ Detecciones: {total}")
 
     @pytest.mark.e2e
     @pytest.mark.slow
-    def test_flujo_con_imagen_real(self, token_auth):
-        """Test con imagen real (si existe)"""
-
-        # IMPORTANTE: tu carpeta es 'test/test_images', no 'tests/...'
-        imagen_path = Path("test/test_images/radiografia_con_caries.jpg")
-
-        if not imagen_path.exists():
-            pytest.skip("Imagen de prueba no disponible")
-
-        with imagen_path.open("rb") as f:
-            files = {"file": ("radiografia.jpg", f, "image/jpeg")}
-            headers = {"Authorization": f"Bearer {token_auth}"}
-
-            response = client.post("/analyze", files=files, headers=headers)
-
-        assert response.status_code in [200, 400]
-
-        if response.status_code == 200:
-            data = response.json()
-            print("\n✅ Análisis con imagen real completado")
-            if "detections" in data or "detecciones" in data:
-                detecciones = data.get("detections") or data.get(
-                    "detecciones", []
+    def test_analisis_multiples_imagenes(self, usuario_y_token):
+        """Analiza múltiples imágenes del dataset"""
+        if not DATASET_DISPONIBLE:
+            pytest.skip("Dataset no disponible")
+        
+        imagenes = get_random_dataset_images(3)
+        if len(imagenes) < 2:
+            pytest.skip("Pocas imágenes en dataset")
+        
+        resultados = []
+        
+        for img_path in imagenes:
+            with open(img_path, 'rb') as f:
+                files = {"file": (img_path.name, f, "image/jpeg")}
+                response = client.post(
+                    "/analyze",
+                    files=files,
+                    headers=usuario_y_token["headers"]
                 )
-                print(f"   Detecciones: {len(detecciones)}")
+            
+            status = "OK" if response.status_code == 200 else f"ERR:{response.status_code}"
+            resultados.append((img_path.name, status))
+            print(f"  {status}: {img_path.name}")
+        
+        exitosos = sum(1 for _, s in resultados if s == "OK")
+        print(f"\n✅ Exitosos: {exitosos}/{len(resultados)}")
+        
+        assert exitosos >= 1, "Ninguna imagen analizada"
 
-    @pytest.mark.e2e
-    def test_analisis_sin_autenticacion_rechazado(
-        self, imagen_radiografia_test
-    ):
-        """Análisis sin token debe ser rechazado"""
-        files = {"file": ("test.jpg", imagen_radiografia_test, "image/jpeg")}
-        response = client.post("/analyze", files=files)
-        assert response.status_code in [401, 422]
 
-    @pytest.mark.e2e
-    def test_analisis_con_token_invalido_rechazado(
-        self, imagen_radiografia_test
-    ):
-        """Análisis con token inválido debe ser rechazado"""
-        files = {"file": ("test.jpg", imagen_radiografia_test, "image/jpeg")}
-        headers = {"Authorization": "Bearer token_falso_12345"}
-        response = client.post("/analyze", files=files, headers=headers)
-        assert response.status_code in [401, 403, 422]
-
+# ═══════════════════════════════════════════════════════════════════
+# TESTS DE HISTORIAL
+# ═══════════════════════════════════════════════════════════════════
 
 class TestAnalysisE2EHistorial:
-    """Tests del historial de análisis"""
+    """Tests del historial"""
 
     @pytest.mark.e2e
-    def test_usuario_puede_ver_historial(self, token_auth):
-        headers = {"Authorization": f"Bearer {token_auth}"}
-        response = client.get("/analyses", headers=headers)
-
+    def test_usuario_puede_ver_historial(self, usuario_y_token):
+        """Usuario puede consultar historial"""
+        response = client.get(
+            "/analyses",
+            headers=usuario_y_token["headers"]
+        )
+        
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data, list)
-
-        print(f"\n✅ Historial consultado: {len(data)} análisis")
+        print(f"\n✅ Historial: {len(data)} análisis")
 
     @pytest.mark.e2e
     @pytest.mark.slow
-    def test_analisis_aparece_en_historial(
-        self, token_auth, imagen_radiografia_test
-    ):
-        headers = {"Authorization": f"Bearer {token_auth}"}
-
+    def test_analisis_guardado_en_historial(self, usuario_y_token, imagen_para_test):
+        """Análisis guardado aparece en historial"""
         # 1) Historial antes
-        response_antes = client.get("/analyses", headers=headers)
-        historial_antes = response_antes.json()
-        cantidad_antes = len(historial_antes)
-
-        # 2) Nuevo análisis
-        files = {"file": ("test.jpg", imagen_radiografia_test, "image/jpeg")}
-        response_analisis = client.post("/analyze", files=files, headers=headers)
-
-        if response_analisis.status_code == 400:
-            pytest.skip("Imagen rechazada por validación")
-
+        resp_antes = client.get("/analyses", headers=usuario_y_token["headers"])
+        cantidad_antes = len(resp_antes.json())
+        
+        # 2) Análisis con save=true
+        buffer, filename = imagen_para_test
+        files = {"file": (filename, buffer, "image/jpeg")}
+        data_form = {"save": "true", "return_image": "true"}
+        
+        resp_analisis = client.post(
+            "/analyze",
+            files=files,
+            data=data_form,
+            headers=usuario_y_token["headers"]
+        )
+        
+        if resp_analisis.status_code == 400:
+            pytest.skip("Imagen rechazada")
+        
+        assert resp_analisis.status_code == 200
+        
         # 3) Historial después
-        response_despues = client.get("/analyses", headers=headers)
-        historial_despues = response_despues.json()
-        cantidad_despues = len(historial_despues)
+        resp_despues = client.get("/analyses", headers=usuario_y_token["headers"])
+        cantidad_despues = len(resp_despues.json())
+        
+        print(f"\n✅ Historial: {cantidad_antes} → {cantidad_despues}")
+        assert cantidad_despues >= cantidad_antes
 
-        if response_analisis.status_code == 200:
-            assert cantidad_despues >= cantidad_antes
-            print(
-                f"\n✅ Análisis agregado al historial "
-                f"({cantidad_antes} → {cantidad_despues})"
-            )
 
+# ═══════════════════════════════════════════════════════════════════
+# TESTS DE RENDIMIENTO
+# ═══════════════════════════════════════════════════════════════════
 
 class TestAnalysisE2ERendimiento:
     """Tests de rendimiento"""
 
     @pytest.mark.e2e
     @pytest.mark.slow
-    def test_tiempo_analisis_aceptable(
-        self, token_auth, imagen_radiografia_test
-    ):
-        files = {"file": ("test.jpg", imagen_radiografia_test, "image/jpeg")}
-        headers = {"Authorization": f"Bearer {token_auth}"}
-
+    def test_tiempo_analisis_aceptable(self, usuario_y_token, imagen_para_test):
+        """Tiempo de análisis < 30 segundos"""
+        buffer, filename = imagen_para_test
+        files = {"file": (filename, buffer, "image/jpeg")}
+        
         inicio = time.time()
-        response = client.post("/analyze", files=files, headers=headers)
-        tiempo_total = time.time() - inicio
+        response = client.post(
+            "/analyze",
+            files=files,
+            headers=usuario_y_token["headers"]
+        )
+        tiempo = time.time() - inicio
+        
+        print(f"\n⏱️  Tiempo: {tiempo:.2f}s")
+        
+        if response.status_code == 400:
+            pytest.skip("Imagen rechazada")
+        
+        assert tiempo < 30, f"Muy lento: {tiempo:.2f}s"
 
-        print(f"\n⏱️  Tiempo de análisis: {tiempo_total:.2f}s")
 
-        assert tiempo_total < 30, f"Análisis muy lento: {tiempo_total:.2f}s"
-
+# ═══════════════════════════════════════════════════════════════════
+# TESTS DE ERRORES
+# ═══════════════════════════════════════════════════════════════════
 
 class TestAnalysisE2EErrores:
     """Tests de manejo de errores"""
 
     @pytest.mark.e2e
-    def test_analisis_sin_archivo(self, token_auth):
-        headers = {"Authorization": f"Bearer {token_auth}"}
-        response = client.post("/analyze", headers=headers)
-        assert response.status_code == 422
+    def test_analisis_sin_autenticacion_rechazado(self, imagen_para_test):
+        """Sin token = rechazado"""
+        buffer, filename = imagen_para_test
+        files = {"file": (filename, buffer, "image/jpeg")}
+        
+        response = client.post("/analyze", files=files)
+        assert response.status_code in [401, 422]
+        print(f"\n✅ Sin auth rechazado: {response.status_code}")
 
     @pytest.mark.e2e
-    def test_analisis_archivo_no_imagen(self, token_auth):
-        txt_bytes = b"Este es un archivo de texto, no una imagen"
-        files = {"file": ("documento.txt", io.BytesIO(txt_bytes), "text/plain")}
-        headers = {"Authorization": f"Bearer {token_auth}"}
-
+    def test_analisis_con_token_invalido(self, imagen_para_test):
+        """Token inválido = rechazado"""
+        buffer, filename = imagen_para_test
+        files = {"file": (filename, buffer, "image/jpeg")}
+        headers = {"Authorization": "Bearer token_falso_123"}
+        
         response = client.post("/analyze", files=files, headers=headers)
+        assert response.status_code in [401, 403]
+        print(f"\n✅ Token inválido rechazado: {response.status_code}")
+
+    @pytest.mark.e2e
+    def test_analisis_sin_archivo(self, usuario_y_token):
+        """Sin archivo = error 422"""
+        response = client.post(
+            "/analyze",
+            headers=usuario_y_token["headers"]
+        )
+        assert response.status_code == 422
+        print(f"\n✅ Sin archivo rechazado: 422")
+
+    @pytest.mark.e2e
+    def test_analisis_archivo_no_imagen(self, usuario_y_token):
+        """Archivo no-imagen = rechazado"""
+        txt = b"Esto es texto, no imagen"
+        files = {"file": ("doc.txt", io.BytesIO(txt), "text/plain")}
+        
+        response = client.post(
+            "/analyze",
+            files=files,
+            headers=usuario_y_token["headers"]
+        )
         assert response.status_code in [400, 422]
+        print(f"\n✅ No-imagen rechazado: {response.status_code}")

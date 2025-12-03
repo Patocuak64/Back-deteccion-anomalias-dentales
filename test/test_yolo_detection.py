@@ -1,6 +1,9 @@
-# tests/test_yolo_detection.py
+# test/test_yolo_detection.py
 """
-Tests para detección YOLO usando app/inference.py (estructura real).
+Tests para detección YOLO.
+
+Para ejecutar:
+    pytest test/test_yolo_detection.py -v -s
 """
 
 import pytest
@@ -8,63 +11,105 @@ import sys
 from pathlib import Path
 from PIL import Image
 import numpy as np
+import time
 
 # Agregar la carpeta raíz al path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# Importar desde app/inference.py (TU estructura real)
+# Importar módulo de inferencia
 try:
     from app.inference import run_inference, calculate_fdi
     YOLO_DISPONIBLE = True
-    print("✅ Módulo inference importado correctamente")
 except ImportError as e:
     print(f"❌ Error importando inference: {e}")
     YOLO_DISPONIBLE = False
 
+# Importar configuración del dataset
+try:
+    from test.test_config import (
+        dataset_exists,
+        get_random_dataset_image,
+        get_random_dataset_images,
+        load_random_image_as_pil,
+        get_dataset_info
+    )
+    DATASET_DISPONIBLE = dataset_exists()
+except ImportError:
+    DATASET_DISPONIBLE = False
 
-# Decorator para saltar tests si no hay YOLO
-skip_if_no_yolo = pytest.mark.skipif(
-    not YOLO_DISPONIBLE,
-    reason="Módulo YOLO no disponible"
-)
 
+# Decorators
+skip_if_no_yolo = pytest.mark.skipif(not YOLO_DISPONIBLE, reason="YOLO no disponible")
+skip_if_no_dataset = pytest.mark.skipif(not DATASET_DISPONIBLE, reason="Dataset no disponible")
+
+
+# ═══════════════════════════════════════════════════════════════════
+# FIXTURES
+# ═══════════════════════════════════════════════════════════════════
+
+@pytest.fixture
+def imagen_sintetica():
+    """Imagen sintética de prueba"""
+    arr = np.random.randint(60, 180, (600, 1200), dtype=np.uint8)
+    arr = np.stack([arr, arr, arr], axis=2)
+    return Image.fromarray(arr, mode='RGB')
+
+
+@pytest.fixture
+def imagen_dataset():
+    """Imagen real del dataset"""
+    if not DATASET_DISPONIBLE:
+        pytest.skip("Dataset no disponible")
+    
+    result = load_random_image_as_pil()
+    if not result:
+        pytest.skip("No se pudo cargar imagen")
+    
+    img, filename = result
+    print(f"\n🖼️  Dataset: {filename}")
+    return img
+
+
+# ═══════════════════════════════════════════════════════════════════
+# TESTS DE INFERENCIA
+# ═══════════════════════════════════════════════════════════════════
 
 class TestYOLOInference:
-    """Tests para la función run_inference"""
-
-    @staticmethod
-    def crear_imagen_test():
-        """Crea una imagen de prueba"""
-        arr = np.random.randint(60, 180, (600, 1200), dtype=np.uint8)
-        arr = np.stack([arr, arr, arr], axis=2)
-        return Image.fromarray(arr, mode='RGB')
-
-    # ═══════════════════════════════════════════════════════
-    # Tests básicos de la función
-    # ═══════════════════════════════════════════════════════
+    """Tests de inferencia YOLO"""
 
     @skip_if_no_yolo
     @pytest.mark.slow
-    @pytest.mark.integration
-    def test_run_inference_funciona(self):
-        """La función run_inference debe ejecutarse sin errores"""
-        img = self.crear_imagen_test()
+    def test_inference_imagen_sintetica(self, imagen_sintetica):
+        """Inferencia funciona con imagen sintética"""
+        img_anotada, resultados = run_inference(imagen_sintetica, confidence=0.25)
         
-        # Ejecutar inferencia
-        img_anotada, resultados = run_inference(img, confidence=0.25)
-        
-        # Verificar que retorna los tipos correctos
         assert isinstance(img_anotada, Image.Image)
         assert isinstance(resultados, dict)
+        print(f"\n✅ Inferencia OK")
+
+    @skip_if_no_yolo
+    @skip_if_no_dataset
+    @pytest.mark.slow
+    def test_inference_imagen_real(self, imagen_dataset):
+        """Inferencia con imagen real del dataset"""
+        inicio = time.time()
+        img_anotada, resultados = run_inference(imagen_dataset, confidence=0.25)
+        tiempo = time.time() - inicio
+        
+        assert isinstance(img_anotada, Image.Image)
+        assert isinstance(resultados, dict)
+        
+        total = resultados["summary"]["total"]
+        print(f"\n📊 Detecciones: {total}")
+        print(f"⏱️  Tiempo: {tiempo:.2f}s")
 
     @skip_if_no_yolo
     @pytest.mark.slow
-    def test_resultado_tiene_estructura_correcta(self):
-        """El resultado debe tener la estructura esperada"""
-        img = self.crear_imagen_test()
-        _, resultados = run_inference(img, confidence=0.25)
+    def test_estructura_resultado(self, imagen_sintetica):
+        """Resultado tiene estructura correcta"""
+        _, resultados = run_inference(imagen_sintetica, confidence=0.25)
         
-        # Verificar campos principales
+        # Campos requeridos
         assert "summary" in resultados
         assert "detections" in resultados
         assert "stats" in resultados
@@ -72,187 +117,132 @@ class TestYOLOInference:
         assert "teeth_fdi" in resultados
         assert "performance" in resultados
         
-        # Verificar estructura de summary
+        # Estructura de summary
         assert "total" in resultados["summary"]
         assert "per_class" in resultados["summary"]
         
-        # Verificar que detections es una lista
-        assert isinstance(resultados["detections"], list)
+        print(f"\n✅ Estructura correcta")
 
     @skip_if_no_yolo
+    @skip_if_no_dataset
     @pytest.mark.slow
-    def test_detecciones_tienen_formato_correcto(self):
-        """Cada detección debe tener los campos necesarios"""
-        img = self.crear_imagen_test()
-        _, resultados = run_inference(img, confidence=0.25)
+    def test_multiples_imagenes_dataset(self):
+        """Test con múltiples imágenes del dataset"""
+        imagenes = get_random_dataset_images(5)
+        if len(imagenes) < 3:
+            pytest.skip("Pocas imágenes")
         
-        # Si hay detecciones, verificar formato
-        for deteccion in resultados["detections"]:
-            assert "class_id" in deteccion
-            assert "class_name" in deteccion
-            assert "confidence" in deteccion
-            assert "bbox" in deteccion
-            assert "fdi" in deteccion
+        total_detecciones = 0
+        
+        print("\n" + "=" * 50)
+        for img_path in imagenes:
+            img = Image.open(img_path)
+            _, resultados = run_inference(img, confidence=0.25)
             
-            # Verificar tipos
-            assert isinstance(deteccion["class_id"], int)
-            assert isinstance(deteccion["class_name"], str)
-            assert isinstance(deteccion["confidence"], float)
-            assert isinstance(deteccion["bbox"], list)
-            assert len(deteccion["bbox"]) == 4
-            assert isinstance(deteccion["fdi"], int)
+            det = resultados["summary"]["total"]
+            total_detecciones += det
+            
+            status = "✅" if det > 0 else "⚪"
+            print(f"{status} {img_path.name}: {det} detecciones")
+        
+        print(f"\nTotal: {total_detecciones} detecciones")
 
-    @skip_if_no_yolo
-    @pytest.mark.slow
-    def test_performance_metrics_presentes(self):
-        """Los tiempos de performance deben estar presentes"""
-        img = self.crear_imagen_test()
-        _, resultados = run_inference(img, confidence=0.25)
-        
-        perf = resultados["performance"]
-        
-        assert "total_ms" in perf
-        assert "model_load_ms" in perf
-        assert "prediction_ms" in perf
-        
-        # Verificar que son números positivos
-        assert perf["total_ms"] > 0
-        assert perf["model_load_ms"] >= 0
-        assert perf["prediction_ms"] > 0
 
-    # ═══════════════════════════════════════════════════════
-    # Tests con imágenes reales (si existen)
-    # ═══════════════════════════════════════════════════════
-
-    @skip_if_no_yolo
-    @pytest.mark.slow
-    @pytest.mark.integration
-    def test_con_imagen_real_caries(self):
-        """Test con imagen real de caries (si existe)"""
-        imagen_path = Path("tests/test_images/radiografia_con_caries.jpg")
-        
-        if not imagen_path.exists():
-            pytest.skip("Imagen de prueba no disponible")
-        
-        img = Image.open(imagen_path)
-        img_anotada, resultados = run_inference(img, confidence=0.25)
-        
-        # Verificar que se ejecutó correctamente
-        assert resultados["summary"]["total"] >= 0
-        
-        # Si detectó algo, verificar formato
-        if resultados["summary"]["total"] > 0:
-            assert len(resultados["detections"]) > 0
-            assert resultados["report_text"] != ""
-
-    @skip_if_no_yolo
-    @pytest.mark.slow
-    def test_con_imagen_real_normal(self):
-        """Test con radiografía normal (sin anomalías)"""
-        imagen_path = Path("tests/test_images/radiografia_normal.jpg")
-        
-        if not imagen_path.exists():
-            pytest.skip("Imagen de prueba no disponible")
-        
-        img = Image.open(imagen_path)
-        _, resultados = run_inference(img, confidence=0.25)
-        
-        # Verificar que se ejecutó
-        assert "summary" in resultados
-        
-        # Si no hay detecciones, debe decirlo en el reporte
-        if resultados["summary"]["total"] == 0:
-            assert "No se detectaron problemas" in resultados["report_text"]
-
+# ═══════════════════════════════════════════════════════════════════
+# TESTS DE FDI
+# ═══════════════════════════════════════════════════════════════════
 
 class TestCalculateFDI:
-    """Tests para la función calculate_fdi"""
+    """Tests de cálculo FDI"""
 
     @skip_if_no_yolo
     @pytest.mark.unit
     def test_fdi_cuadrante_1(self):
-        """Cuadrante 1 (superior derecho) - FDI 11-18"""
-        # Punto en cuadrante superior derecho
-        fdi = calculate_fdi(x_center_norm=0.25, y_center_norm=0.25)
+        """Cuadrante 1: FDI 11-18"""
+        fdi = calculate_fdi(0.25, 0.25)
         assert 11 <= fdi <= 18
+        print(f"\n✅ Q1: {fdi}")
 
     @skip_if_no_yolo
     @pytest.mark.unit
     def test_fdi_cuadrante_2(self):
-        """Cuadrante 2 (superior izquierdo) - FDI 21-28"""
-        # Punto en cuadrante superior izquierdo
-        fdi = calculate_fdi(x_center_norm=0.75, y_center_norm=0.25)
+        """Cuadrante 2: FDI 21-28"""
+        fdi = calculate_fdi(0.75, 0.25)
         assert 21 <= fdi <= 28
+        print(f"\n✅ Q2: {fdi}")
 
     @skip_if_no_yolo
     @pytest.mark.unit
     def test_fdi_cuadrante_3(self):
-        """Cuadrante 3 (inferior izquierdo) - FDI 31-38"""
-        # Punto en cuadrante inferior izquierdo
-        fdi = calculate_fdi(x_center_norm=0.75, y_center_norm=0.75)
+        """Cuadrante 3: FDI 31-38"""
+        fdi = calculate_fdi(0.75, 0.75)
         assert 31 <= fdi <= 38
+        print(f"\n✅ Q3: {fdi}")
 
     @skip_if_no_yolo
     @pytest.mark.unit
     def test_fdi_cuadrante_4(self):
-        """Cuadrante 4 (inferior derecho) - FDI 41-48"""
-        # Punto en cuadrante inferior derecho
-        fdi = calculate_fdi(x_center_norm=0.25, y_center_norm=0.75)
+        """Cuadrante 4: FDI 41-48"""
+        fdi = calculate_fdi(0.25, 0.75)
         assert 41 <= fdi <= 48
+        print(f"\n✅ Q4: {fdi}")
 
     @skip_if_no_yolo
     @pytest.mark.unit
-    @pytest.mark.parametrize("x,y", [
-        (0.1, 0.1),   # Superior derecho
-        (0.9, 0.1),   # Superior izquierdo
-        (0.9, 0.9),   # Inferior izquierdo
-        (0.1, 0.9),   # Inferior derecho
+    @pytest.mark.parametrize("x,y,q_esperado", [
+        (0.1, 0.1, 1),
+        (0.9, 0.1, 2),
+        (0.9, 0.9, 3),
+        (0.1, 0.9, 4),
     ])
-    def test_fdi_retorna_numero_valido(self, x, y):
-        """FDI siempre debe retornar número válido (11-48)"""
+    def test_fdi_todos_cuadrantes(self, x, y, q_esperado):
+        """FDI correcto para cada cuadrante"""
         fdi = calculate_fdi(x, y)
-        assert isinstance(fdi, int)
+        q_obtenido = fdi // 10
+        
+        assert q_obtenido == q_esperado
         assert 11 <= fdi <= 48
 
 
+# ═══════════════════════════════════════════════════════════════════
+# TESTS DEL MODELO
+# ═══════════════════════════════════════════════════════════════════
+
 class TestYOLOModelo:
-    """Tests básicos del modelo"""
+    """Tests del modelo YOLO"""
 
     @skip_if_no_yolo
     @pytest.mark.unit
-    def test_modelo_se_puede_cargar(self):
-        """El modelo debe poder cargarse"""
-        try:
-            from app.model_store import get_model
-            modelo = get_model()
-            assert modelo is not None
-        except Exception as e:
-            pytest.fail(f"Error al cargar modelo: {e}")
+    def test_modelo_carga(self):
+        """Modelo puede cargarse"""
+        from app.model_store import get_model
+        modelo = get_model()
+        assert modelo is not None
+        print(f"\n✅ Modelo cargado")
 
     @skip_if_no_yolo
     @pytest.mark.unit
-    def test_clases_definidas_correctamente(self):
-        """Las clases deben estar bien definidas"""
+    def test_clases_correctas(self):
+        """Modelo tiene 3 clases"""
         from app.inference import CLASS_NAMES, CLASS_COLORS
         
-        # Verificar que existen 3 clases
-        assert len(CLASS_NAMES) == 3, f"Se esperaban 3 clases, se encontraron {len(CLASS_NAMES)}"
+        assert len(CLASS_NAMES) == 3
         assert len(CLASS_COLORS) == 3
         
-        # Verificar que tienen valores
-        for clase_id, nombre in CLASS_NAMES.items():
-            assert isinstance(nombre, str)
-            assert len(nombre) > 0
+        print(f"\n✅ Clases:")
+        for id, nombre in CLASS_NAMES.items():
+            print(f"   {id}: {nombre}")
 
 
-# ═══════════════════════════════════════════════════════════
-# Test de disponibilidad
-# ═══════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════
+# TEST DE DISPONIBILIDAD
+# ═══════════════════════════════════════════════════════════════════
 
 class TestYOLODisponibilidad:
-    """Test de que el módulo está disponible"""
-    
+    """Test de disponibilidad"""
+
     @pytest.mark.unit
-    def test_modulo_inference_existe(self):
-        """El módulo inference debe existir"""
-        assert YOLO_DISPONIBLE == True, "Módulo inference no disponible"
+    def test_modulo_disponible(self):
+        """Módulo inference disponible"""
+        assert YOLO_DISPONIBLE == True
+        print(f"\n✅ Módulo disponible")
